@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: repository-log
+  annotations:
+    pv.beta.kubernetes.io/gid: "0"
+  labels:
+    repository: log
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteMany
+  glusterfs:
+    endpoints: gluster-cluster
+    path: /repository-log
+    readOnly: false
+  persistentVolumeReclaimPolicy: Delete
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: repository-log
+  namespace: repository
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  selector:
+    matchLabels:
+      repository: log
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: warever-elastic
+  namespace: repository
+spec:
+  selector:
+    matchLabels:
+      app: warever-elastic
+  serviceName: "warever-elastic"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: warever-elastic
+    spec:
+      containers:
+      - name: warever-elastic
+        image: registry.warever.io/library/elasticsearch
+        ports:
+        - containerPort: 9200
+          name: elasticport
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+          readOnly: false
+        - name: log
+          mountPath: /usr/share/elasticsearch/logs
+          subPath: elastic
+          readOnly: false
+        env:
+        - name: ES_JAVA_OPTS
+          value: '-Xms1g -Xmx1g'
+        - name: xpack.security.enabled
+          value: 'true'
+        - name: ELASTIC_PASSWORD
+          value: ware2004@))$
+        - name: discovery.type
+          value: single-node
+        - name: cluster.name
+          value: elasticsearch
+      volumes:
+        - name: log
+          persistentVolumeClaim:
+            claimName: repository-log
+      imagePullSecrets:
+        - name: registry-auth
+  
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      storageClassName: gluster-heketi
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
